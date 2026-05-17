@@ -221,6 +221,48 @@ c++ -std=c++20 -O2 -Icpp/include \
 cpp/build/manual/url_bloom_test
 ```
 
+## Linux / Docker
+
+The extension is platform-specific. A macOS arm64 build produces a Darwin
+shared object and cannot be copied directly to Linux. For Linux, build the
+package in a Linux environment.
+
+On a Linux host:
+
+```bash
+git clone https://github.com/wangyong1972/bloomfilter.git
+cd bloomfilter
+
+python3 -m venv python/.venv
+python/.venv/bin/python -m pip install -U pip
+python/.venv/bin/python -m pip install -e python
+python/.venv/bin/python -m pytest python/tests
+```
+
+The Dockerfile builds the extension inside a Linux Beam SDK image:
+
+```bash
+docker build -t url-bloom-beam:latest .
+```
+
+During the Docker build, this command compiles the native C++ extension for
+Linux:
+
+```dockerfile
+RUN python -m pip install -v ./python
+```
+
+The build log should show CMake/compiler output, and the final verification
+step prints the installed native extension path. On Linux it should look similar
+to:
+
+```text
+/usr/local/lib/python3.12/site-packages/url_bloom_native.cpython-312-x86_64-linux-gnu.so
+```
+
+For Dataflow, use this image as the base for the pipeline container or extend it
+with the rest of the pipeline dependencies.
+
 ## Benchmarks
 
 Native benchmark modes:
