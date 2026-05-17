@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(url_bloom_filter LANGUAGES CXX)
+project(url_bloom_filter LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,9 +11,11 @@ option(URL_BLOOM_BUILD_PYTHON "Build Python extension" ON)
 
 add_library(url_bloom STATIC
   src/bloom_filter.cc
+  third_party/xxhash/xxhash.c
 )
 target_include_directories(url_bloom PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/xxhash
 )
 
 if(URL_BLOOM_BUILD_PYTHON)
@@ -37,4 +39,3 @@ if(URL_BLOOM_BUILD_BENCHMARKS)
   add_executable(url_bloom_benchmark bench/benchmark.cc)
   target_link_libraries(url_bloom_benchmark PRIVATE url_bloom)
 endif()
-

@@ -230,4 +230,7 @@ PYBIND11_MODULE(url_bloom_native, m) {
 
   m.def("optimal_hash_count", &url_bloom::optimal_hash_count);
   m.def("bits_for_bytes", &url_bloom::bits_for_bytes);
+  m.def("is_power_of_two", &url_bloom::is_power_of_two);
+  m.def("next_power_of_two", &url_bloom::next_power_of_two);
+  m.def("next_power_of_two_bytes", &url_bloom::next_power_of_two_bytes);
 }

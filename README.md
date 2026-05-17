@@ -10,6 +10,10 @@ size_bytes = 13GB
 hash_count = optimal for size/items, about 21
 ```
 
+URL fingerprints are generated with vendored `XXH3_128bits_withSeed()` from
+xxHash. The two 64-bit halves of the 128-bit hash feed double hashing for the
+Bloom probes.
+
 The Python extension exposes batch lookup:
 
 ```python
@@ -215,8 +219,13 @@ The C++ core can also be compiled directly:
 
 ```bash
 mkdir -p cpp/build/manual
-c++ -std=c++20 -O2 -Icpp/include \
-  cpp/src/bloom_filter.cc cpp/tests/test_bloom_filter.cc \
+cc -O2 -Icpp/third_party/xxhash \
+  -c cpp/third_party/xxhash/xxhash.c \
+  -o cpp/build/manual/xxhash.o
+c++ -std=c++20 -O2 -Icpp/include -Icpp/third_party/xxhash \
+  cpp/build/manual/xxhash.o \
+  cpp/src/bloom_filter.cc \
+  cpp/tests/test_bloom_filter.cc \
   -o cpp/build/manual/url_bloom_test
 cpp/build/manual/url_bloom_test
 ```
@@ -290,6 +299,17 @@ python/.venv/bin/python python/benchmarks/benchmark_url_bloom_native.py \
   --hash-count 21
 ```
 
+Threaded native Arrow benchmark:
+
+```bash
+python/.venv/bin/python python/benchmarks/benchmark_url_bloom_threads.py \
+  --threads 4 \
+  --insert-count 1000000 \
+  --query-count 1000000 \
+  --size-bytes 67108864 \
+  --hash-count 21
+```
+
 `pybloomfiltermmap3` comparison:
 
 ```bash
@@ -315,11 +335,20 @@ match/query URLs:
 
 | Implementation | Filter config | Add URLs/s | Match URLs/s | Max RSS |
 | --- | --- | ---: | ---: | ---: |
-| Native `list[str]` API | 64MiB, 21 hashes | 2.87M/s | 4.30M/s | 325MiB |
-| Native offsets API | 64MiB, 21 hashes | 3.11M/s | 5.42M/s | 331MiB |
-| Native Arrow-style API | 64MiB, 21 hashes | 3.25M/s | 5.63M/s | 256MiB |
-| `pybloomfiltermmap3` | capacity 1M, error 1e-6 | 2.03M/s | 3.77M/s | 195MiB |
+| Native `list[str]` API | 64MiB, 21 hashes | 3.60M/s | 7.09M/s | 325MiB |
+| Native offsets API | 64MiB, 21 hashes | 3.79M/s | 9.65M/s | 329MiB |
+| Native Arrow-style API | 64MiB, 21 hashes | 4.12M/s | 10.11M/s | 256MiB |
+| `pybloomfiltermmap3` | capacity 1M, error 1e-6 | 1.68M/s | 3.54M/s | 195MiB |
 | Pure Python baseline | 64MiB, 21 hashes | 61.5K/s | 77.8K/s | 255MiB |
+
+Threaded native Arrow match results with a shared read-only mmap:
+
+| Threads | Match URLs/s | Max RSS |
+| ---: | ---: | ---: |
+| 1 | 9.60M/s | 321MiB |
+| 2 | 14.44M/s | 288MiB |
+| 4 | 22.39M/s | 304MiB |
+| 8 | 31.31M/s | 293MiB |
 
 The `pybloomfiltermmap3` comparison above uses `capacity=1_000_000` and
 `error_rate=1e-6`, which creates a much smaller filter than 64MiB: about
@@ -328,8 +357,8 @@ same approximate size, a local run produced:
 
 | Implementation | Filter size | Hash probes | Add URLs/s | Query URLs/s | Max RSS |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Native Arrow-style API | 3.6MiB | 19 | 8.10M/s | 10.68M/s | 196MiB |
-| `pybloomfiltermmap3` | ~3.6MiB | 19 | 1.88M/s | 3.30M/s | 197MiB |
+| Native Arrow-style API | 3.6MiB | 19 | 17.11M/s | 27.12M/s | 196MiB |
+| `pybloomfiltermmap3` | ~3.6MiB | 19 | 1.68M/s | 3.54M/s | 195MiB |
 
 `pybloomfiltermmap3` is used from Python one URL at a time in the benchmark:
 
@@ -350,6 +379,21 @@ power-of-two filter sizes use a bit mask, and other sizes use multiply-high
 range mapping. This is faster, but it means Bloom files built by older versions
 of this experimental code are not compatible with files built by the current
 probe algorithm.
+
+Power-of-two filter sizes are worth considering when the extra memory is
+acceptable. They let probe index mapping use a bit mask. For the 13GB production
+target, the next power-of-two byte size is 16GiB:
+
+```python
+import url_bloom_native
+
+url_bloom_native.next_power_of_two_bytes(13_000_000_000)
+# 17179869184
+```
+
+That adds about 3.89GiB per mmap file. It can be useful for shard sizes like
+64MiB, 128MiB, or 256MiB, but it should be a deliberate sizing decision because
+it changes memory footprint and false-positive rate.
 
 For Dataflow, the most important practical lesson is to avoid a Python per-row
 hot loop. Pass batches as contiguous URL bytes plus offsets, ideally from an

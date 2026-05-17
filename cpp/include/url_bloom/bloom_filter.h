@@ -30,6 +30,12 @@ std::uint32_t optimal_hash_count(std::uint64_t bit_count,
 
 std::uint64_t bits_for_bytes(std::uint64_t bytes);
 
+bool is_power_of_two(std::uint64_t value);
+
+std::uint64_t next_power_of_two(std::uint64_t value);
+
+std::uint64_t next_power_of_two_bytes(std::uint64_t bytes);
+
 class UrlBloomFilter {
  public:
   static constexpr std::uint64_t kDefaultExpectedItems = 3'500'000'000ULL;

@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <xxhash.h>
 
 #include <atomic>
 #include <cerrno>
@@ -60,7 +61,7 @@ std::uint64_t Fnv1a64(std::string_view value, std::uint64_t seed) {
 std::uint64_t ProbeIndex(const Fingerprint128& fp, std::uint32_t i,
                          std::uint64_t bit_count) {
   const std::uint64_t value = fp.h1 + static_cast<std::uint64_t>(i) * fp.h2;
-  if ((bit_count & (bit_count - 1)) == 0) {
+  if (is_power_of_two(bit_count)) {
     return value & (bit_count - 1);
   }
   return static_cast<std::uint64_t>(
@@ -84,12 +85,8 @@ std::runtime_error SystemError(const std::string& action,
 }  // namespace
 
 Fingerprint128 fingerprint128(std::string_view value, std::uint64_t seed) {
-  const std::uint64_t a =
-      Mix64(Fnv1a64(value, seed ^ 0x243f6a8885a308d3ULL) ^ value.size());
-  std::uint64_t b =
-      Mix64(Fnv1a64(value, seed ^ 0x13198a2e03707344ULL) ^ (value.size() << 1));
-  b |= 1ULL;
-  return Fingerprint128{a, b};
+  const auto hash = XXH3_128bits_withSeed(value.data(), value.size(), seed);
+  return Fingerprint128{hash.low64, hash.high64 | 1ULL};
 }
 
 std::uint32_t optimal_hash_count(std::uint64_t bit_count,
@@ -106,6 +103,31 @@ std::uint32_t optimal_hash_count(std::uint64_t bit_count,
 
 std::uint64_t bits_for_bytes(std::uint64_t bytes) {
   return RoundUpToWordBytes(bytes) * 8ULL;
+}
+
+bool is_power_of_two(std::uint64_t value) {
+  return value != 0 && (value & (value - 1)) == 0;
+}
+
+std::uint64_t next_power_of_two(std::uint64_t value) {
+  if (value <= 1) {
+    return 1;
+  }
+  if (value > (1ULL << 63)) {
+    throw std::overflow_error("next_power_of_two would overflow uint64_t");
+  }
+  --value;
+  value |= value >> 1;
+  value |= value >> 2;
+  value |= value >> 4;
+  value |= value >> 8;
+  value |= value >> 16;
+  value |= value >> 32;
+  return value + 1;
+}
+
+std::uint64_t next_power_of_two_bytes(std::uint64_t bytes) {
+  return next_power_of_two(RoundUpToWordBytes(bytes));
 }
 
 UrlBloomFilter UrlBloomFilter::Create(const std::filesystem::path& path,

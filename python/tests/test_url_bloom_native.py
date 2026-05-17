@@ -95,3 +95,10 @@ def test_reopen(tmp_path: Path) -> None:
     reopened = url_bloom_native.UrlBloomFilter.open(str(path))
     assert reopened.contains_url("https://example.com/a")
     assert not reopened.contains_url("https://example.com/b")
+
+
+def test_power_of_two_helpers() -> None:
+    assert url_bloom_native.is_power_of_two(64)
+    assert not url_bloom_native.is_power_of_two(65)
+    assert url_bloom_native.next_power_of_two(65) == 128
+    assert url_bloom_native.next_power_of_two_bytes(13_000_000_000) == 17_179_869_184
