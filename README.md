@@ -350,6 +350,24 @@ Threaded native Arrow match results with a shared read-only mmap:
 | 4 | 22.39M/s | 304MiB |
 | 8 | 31.31M/s | 293MiB |
 
+Large-filter local benchmark results on the same machine, using 1M inserted
+URLs and 10M match/query URLs:
+
+| Bloom size | Threads | Match URLs/s | Query seconds | Max RSS |
+| ---: | ---: | ---: | ---: | ---: |
+| 13GB | 4 | 5.49M/s | 1.82s | 25.1GiB |
+| 13GB | 8 | 6.11M/s | 1.64s | 25.0GiB |
+| 16GiB | 4 | 4.29M/s | 2.33s | 32.9GiB |
+| 16GiB | 8 | 4.43M/s | 2.26s | 32.8GiB |
+
+These large-filter numbers measure only the match/query phase. They do not
+include creating the mmap file or inserting the 1M URLs into the filter. On this
+machine, the 13GB filter was faster than the 16GiB power-of-two filter: the
+larger random-access working set outweighed the cheaper bit-mask probe mapping.
+For a single full-size filter, 13GB is the better default. Power-of-two sizing is
+more attractive after hash sharding, where each shard can be a smaller 64MiB,
+128MiB, or 256MiB filter.
+
 The `pybloomfiltermmap3` comparison above uses `capacity=1_000_000` and
 `error_rate=1e-6`, which creates a much smaller filter than 64MiB: about
 3.6MiB with 19 hash probes. With the native Arrow-style API configured to the
