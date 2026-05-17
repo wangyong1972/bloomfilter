@@ -1,0 +1,21 @@
+# Build outputs
+cpp/build/
+python/build/
+*.egg-info/
+*.so
+*.dylib
+*.a
+
+# Python environments and caches
+.venv/
+python/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Bloom filter data files
+*.bloom
+
+# macOS metadata
+.DS_Store
+

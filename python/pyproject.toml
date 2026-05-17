@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12", "cmake>=3.26", "ninja"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "url-bloom-native"
+version = "0.1.0"
+description = "mmap-backed native URL Bloom filter with batch Python API"
+requires-python = ">=3.10"
+
+[tool.scikit-build]
+cmake.source-dir = "../cpp"
+build-dir = "build/{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+URL_BLOOM_BUILD_TESTS = "OFF"
+URL_BLOOM_BUILD_BENCHMARKS = "OFF"
+URL_BLOOM_BUILD_PYTHON = "ON"
