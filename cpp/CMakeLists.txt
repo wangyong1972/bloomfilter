@@ -13,6 +13,7 @@ add_library(url_bloom STATIC
   src/bloom_filter.cc
   third_party/xxhash/xxhash.c
 )
+set_target_properties(url_bloom PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(url_bloom PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/xxhash
