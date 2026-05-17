@@ -108,6 +108,92 @@ offset buffers. The current native API does not consume Arrow's null bitmap, so
 the URL column should be non-null or nulls should be handled before calling the
 Bloom filter.
 
+## Parallel Bloom Filter Build
+
+For billions of input URLs, do not have all workers write to one shared Bloom
+file. Each worker should build a local partial Bloom filter with the exact same
+metadata, then merge the partial filters with a bitwise OR.
+
+All partial filters must use the same:
+
+```text
+expected_items
+size_bytes
+hash_count
+seed
+probe algorithm version
+URL normalization logic
+```
+
+Worker-side build pattern:
+
+```python
+import url_bloom_native
+
+
+def build_partial_bloom(partial_path: str, url_batches) -> str:
+    bloom = url_bloom_native.UrlBloomFilter.create(
+        partial_path,
+        expected_items=3_500_000_000,
+        size_bytes=13_000_000_000,
+        hash_count=21,
+    )
+
+    for data, offsets in url_batches:
+        # Prefer Arrow-style buffers when the input comes from Parquet/Arrow.
+        bloom.add_urls_arrow(data, offsets)
+
+    bloom.flush()
+    return partial_path
+```
+
+Driver or merge-stage pattern:
+
+```python
+import url_bloom_native
+
+
+def merge_partials(output_path: str, partial_paths: list[str]) -> None:
+    merged = url_bloom_native.UrlBloomFilter.create(
+        output_path,
+        expected_items=3_500_000_000,
+        size_bytes=13_000_000_000,
+        hash_count=21,
+    )
+
+    for partial_path in partial_paths:
+        merged.merge_from(partial_path)
+
+    merged.flush()
+```
+
+`merge_from()` is exposed in Python and performs a word-wise OR of another
+Bloom file into the destination. It is much cheaper than re-reading all URLs,
+but for a 13GB Bloom filter each merge still scans about 13GB from the partial
+file and writes the destination file. If there are many partials, use a tree
+merge instead of one serial merge stage:
+
+```text
+level 0: worker partials
+level 1: merge groups of 8-32 partials
+level 2: merge group outputs
+final:   one complete Bloom filter
+```
+
+In Beam/Dataflow, the practical shape is usually:
+
+```text
+Read canonical URLs
+-> shard/group by build partition
+-> each partition writes one partial .bloom file
+-> merge partial .bloom files by OR
+-> publish final .bloom file for query jobs
+```
+
+The final query job can then mmap the published Bloom file read-only on each
+worker. Multiple query threads in one worker process can share the same mmap
+mapping; the 13GB Bloom file is not copied once per thread.
+
 ## Build and Test
 
 Create a virtual environment and install the extension in editable mode:
